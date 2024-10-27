@@ -1,5 +1,11 @@
+from datetime import datetime
 from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
+
+
+class EduGounnException(Exception):
+    def __init__(self, data: dict):
+        self.data = data
 
 
 class Homework(BaseModel):
@@ -9,39 +15,55 @@ class Homework(BaseModel):
 
 
 class Assessment(BaseModel):
-    value: str
-    countas: str
-    color_hex: Optional[str]
-    count: bool
-    convert: int
-    lesson_id: str
+    value: int
+    lesson_id: int
     date: str
-    nm: str
-    comment: str
+    comment: Optional[str] = None
 
 
-class Item(BaseModel):
-    homework: List[Homework] = []
-    files: List[str] = []
-    resources: List[str] = []
+class File(BaseModel):
+    id: int = Field(alias='toid')
+    filename: str
+    link: str
+
+
+class Lesson(BaseModel):
+    homeworks: List[Homework] = Field(alias='homework')
+    files: List[File]
     name: str
-    lesson_id: str
-    num: str
-    room: Optional[str] = ''
+    lesson_id: int
+    num: int
     teacher: str
     sort: int
-    assessments: Optional[List[Assessment]] = None
-    grp_short: Optional[str] = None
-    grp: Optional[str] = None
+    room: Optional[str] = None
+    group: Optional[str] = None
+    start_time: datetime = Field(alias="starttime")
+    end_time: datetime = Field(alias="endtime")
+
+    @field_validator('start_time', "end_time", mode='before')
+    def convert_to_time(cls, value):
+        return datetime.strptime(value, '%H:%M:%S')
+
+
+class AdditionalLesson(BaseModel):
+    name: str
+    sort: int
+    group: Optional[str] = None
+    teacher: str
+    start_time: datetime = Field(alias="starttime")
+    end_time: datetime = Field(alias="endtime")
+
+    @field_validator('start_time', "end_time", mode='before')
+    def convert_to_time(cls, value):
+        return datetime.strptime(value, '%H:%M:%S')
 
 
 class Day(BaseModel):
-    name: str
-    title: str
-    items: List[Item]
+    date: datetime = Field(alias="name")
+    alert: Optional[str] = None
+    lessons: List[Lesson] = Field(alias="items")
+    additional_lessons: list[AdditionalLesson] = Field([], alias="items_extday")
 
-
-class Student(BaseModel):
-    name: str
-    title: str
-    days: List[Day]
+    @field_validator('date', mode='before')
+    def convert_to_date(cls, value):
+        return datetime.strptime(value, '%Y%m%d')

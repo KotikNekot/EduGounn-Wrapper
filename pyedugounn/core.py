@@ -1,10 +1,13 @@
-from asyncio import get_event_loop
+from json import dumps
+from logging import getLogger
 from datetime import datetime
 from typing import Any, overload
 
 from aiohttp import ClientSession
 
-from pyedugounn.models import Student
+from .models import Day, EduGounnException
+
+logger = getLogger(__name__)
 
 
 class EduGounn:
@@ -84,11 +87,18 @@ class EduGounn:
             params=self._convert_bool_to_str(params),
             **other_params,
         )
+        logger.debug(
+            f"Отправлен запрос: {self._BASE_URL + endpoint}, Параметры: {params}"
+        )
         response_json = await response.json()
 
-
         response_data = response_json.get("response")
+        error_data: dict = response_data.get("error", None)
         result_data = response_data.get("result")
+
+        if error_data:
+            logger.error(error_data)
+            raise EduGounnException(error_data)
 
         return self._transform_dict_to_list(result_data)
 
@@ -99,7 +109,7 @@ class EduGounn:
         date_to: datetime,
         student: str,
         rings: bool = True
-    ) -> Student:
+    ) -> list[Day]:
         ...
 
     @overload
@@ -109,7 +119,7 @@ class EduGounn:
         date_to: datetime,
         student: str | None = None,
         rings: bool = True
-    ) -> list[Student]:
+    ) -> dict[str, list[Day]]:
         ...
 
     async def get_diary(
@@ -118,7 +128,19 @@ class EduGounn:
         date_to: datetime,
         student_id: str | None = None,
         rings: bool = True
-    ) -> list[Student] | Student | None:
+    ) -> list[dict[str, list[Day]]] | list[Day]:
+        """
+        Получает расписание для заданного диапазона дат и ученика.
+
+        :param date_from: Дата начала диапазона (тип: datetime).
+        :param date_to: Дата окончания диапазона (тип: datetime).
+        :param student_id: Идентификатор ученика (тип: str или None).
+                          Если не указан, возвращаются данные всех учеников.
+        :param rings: ?
+        :return: Список словарей с данными дневника для каждого ученика,
+                 где ключ — айди ученика, а значение - список объектов Day.
+                 Если student_id указан, возвращается только список объектов Day для этого студента.
+        """
         response = await self._crate_request(
             "GET",
             "getdiary",
@@ -127,9 +149,14 @@ class EduGounn:
                 "rings": rings,
             }
         )
-        students = [Student(**data) for data in response.get("students")]
+
+        diary = [
+            {
+                data.get("name"): [Day(**d) for d in data.get("days")]
+            } for data in response.get("students")
+        ]
 
         if not student_id:
-            return students
+            return diary
 
-        return next((student for student in students if student.name == student_id), None)
+        return next((entry[student_id] for entry in diary if student_id in entry), None)
